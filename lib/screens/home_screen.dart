@@ -16,6 +16,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   List<Urun> _urunler = [];
+  final Set<int> _selectedItems = {};
 
   // Speech to text
   final stt.SpeechToText _speech = stt.SpeechToText();
@@ -95,6 +96,25 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _deleteSelectedItems() {
+    String itemsToDelete =
+        _selectedItems.map((index) => _urunler[index].isim).join(", ");
+
+    final Content content =
+        Content.text("Listeden şu ürünleri sil: $itemsToDelete");
+    _chatSession.sendMessage(content).then(
+      (GenerateContentResponse value) {
+        if (value.text case final String text) {
+          final List urunler = jsonDecode(text);
+          setState(() {
+            _urunler = urunler.map((e) => Urun.fromMap(e)).toList();
+            _selectedItems.clear();
+          });
+        }
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -109,6 +129,13 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         elevation: 0,
+        actions: [
+          if (_selectedItems.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.delete),
+              onPressed: _deleteSelectedItems,
+            ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {},
@@ -152,6 +179,22 @@ class _HomeScreenState extends State<HomeScreen> {
             return Padding(
               padding: const EdgeInsets.all(5.0),
               child: ListTile(
+                leading: Transform.scale(
+                  scale: 1.2,
+                  child: Checkbox(
+                    value: _selectedItems.contains(index),
+                    onChanged: (bool? value) {
+                      setState(() {
+                        if (value == true) {
+                          _selectedItems.add(index);
+                        } else {
+                          _selectedItems.remove(index);
+                        }
+                      });
+                    },
+                    shape: CircleBorder(),
+                  ),
+                ),
                 title: Text(
                   urun.isim,
                   style: GoogleFonts.ubuntu(
