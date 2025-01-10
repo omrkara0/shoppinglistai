@@ -1,6 +1,3 @@
-
-![Logo](https://dev-to-uploads.s3.amazonaws.com/uploads/articles/th5xamgrr6se0x5ro4g6.png)
-
     
 # AI Destekli Alışveriş Listesi
 
@@ -21,10 +18,11 @@ Kolayca sesiniz ile ürün ekleyin , silin ve düzenleyin.
 
 
 
+
   
 ## Ekran Görüntüleri
 
-![Uygulama Ekran Görüntüsü](https://via.placeholder.com/468x300?text=App+Screenshot+Here)
+![Screenshot_1736516788](https://github.com/user-attachments/assets/614772ce-01f6-4885-b468-52d4d98e6a63)
 
   
 ## Destek
