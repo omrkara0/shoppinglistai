@@ -1,15 +1,16 @@
-import 'dart:convert';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shoppinglistai/constants.dart';
 import 'package:shoppinglistai/models/urun.dart';
+import 'package:shoppinglistai/services/gemini_service.dart';
+import 'package:shoppinglistai/services/speech_service.dart';
+import 'package:shoppinglistai/services/storage_service.dart';
 import 'package:shoppinglistai/widgets/custom_app_bar.dart';
 import 'package:shoppinglistai/widgets/empty_state.dart';
 import 'package:shoppinglistai/widgets/no_results.dart';
 import 'package:shoppinglistai/widgets/shopping_list_item.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:shoppinglistai/widgets/speech_fab.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,31 +21,18 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
+  // Services
+  final GeminiService _geminiService = GeminiService();
+  final StorageService _storageService = StorageService();
+  final SpeechService _speechService = SpeechService();
+
+  // State
   List<Urun> _urunler = [];
   final Set<int> _selectedItems = {};
   String _searchQuery = '';
 
-  // Speech to text
-  final stt.SpeechToText _speech = stt.SpeechToText();
-  bool _speechAvailable = false;
-  bool _listening = false;
-
   // Animation controller for FAB
   late AnimationController _animationController;
-
-  // Google Generative AI
-  late final GenerativeModel _generativeModel;
-
-  final GenerationConfig _generationConfig = GenerationConfig(
-      responseMimeType: "application/json",
-      responseSchema: Schema.array(
-          items: Schema.object(properties: {
-        "isim": Schema.string(),
-        "miktar": Schema.number(),
-        "miktarTuru": Schema.enumString(enumValues: miktarTurleri)
-      })));
-
-  late final ChatSession _chatSession;
 
   List<Urun> get _filteredUrunler => _urunler
       .where((urun) =>
@@ -54,21 +42,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
-    _speech
-        .initialize()
-        .then((value) => setState(() => _speechAvailable = true));
-
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-
-    _generativeModel = GenerativeModel(
-      apiKey: "AIzaSyBzDHhSknCFkedGpR8U7VaL4oKWlV2Q23Y",
-      model: "gemini-1.5-flash-latest",
-      generationConfig: _generationConfig,
-    );
-    _startGeminiSession();
+    _initializeApp();
   }
 
   @override
@@ -77,71 +51,61 @@ class _HomeScreenState extends State<HomeScreen>
     super.dispose();
   }
 
-  void _startListening() {
-    setState(() => _listening = true);
-    _animationController.forward();
-    _speech.listen(
-      onResult: (result) {
-        if (result.finalResult) {
-          log(result.recognizedWords);
-          _sendMessage(result.recognizedWords);
-        }
-      },
+  Future<void> _initializeApp() async {
+    // Initialize animation controller
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
     );
-  }
 
-  void _stopListening() {
-    _speech.stop().then((value) {
-      setState(() => _listening = false);
-      _animationController.reverse();
-    });
-  }
-
-  void _startGeminiSession() {
-    _chatSession = _generativeModel.startChat(history: [
-      Content("user", [
-        TextPart(
-            "Vereceğim cümlede geçen alışveriş listesini JSON formatında döndür: {isim, miktar, miktarTuru(kilo, adet veya litre)}")
-      ]),
+    // Initialize services
+    await Future.wait([
+      _speechService.initialize(),
+      _storageService.initialize(),
     ]);
+
+    // Load saved items
+    final savedItems = await _storageService.loadItems();
+    setState(() => _urunler = savedItems);
+
+    // Initialize Gemini with existing items
+    await _geminiService.initialize(_urunler);
   }
 
-  void _sendMessage(String message) {
-    final Content content = Content.text(message);
-    _generativeModel.countTokens([content]).then(
-      (CountTokensResponse value) {
-        log("${value.totalTokens} token harcandı");
-      },
-    );
-
-    _chatSession.sendMessage(content).then(
-      (GenerateContentResponse value) {
-        if (value.text case final String text) {
-          final List urunler = jsonDecode(text);
-          _urunler = urunler.map((e) => Urun.fromMap(e)).toList();
-          setState(() {});
-        }
+  void _startListening() {
+    _animationController.forward();
+    setState(() {});
+    _speechService.startListening(
+      onResult: (String text) {
+        log(text);
+        _processMessage(text);
       },
     );
   }
 
-  void _deleteSelectedItems() {
-    String itemsToDelete =
-        _selectedItems.map((index) => _urunler[index].isim).join(", ");
+  Future<void> _stopListening() async {
+    _animationController.reverse();
+    setState(() {});
+    await _speechService.stopListening();
+  }
 
-    final Content content =
-        Content.text("Listeden şu ürünleri sil: $itemsToDelete");
-    _chatSession.sendMessage(content).then(
-      (GenerateContentResponse value) {
-        if (value.text case final String text) {
-          final List urunler = jsonDecode(text);
-          setState(() {
-            _urunler = urunler.map((e) => Urun.fromMap(e)).toList();
-            _selectedItems.clear();
-          });
-        }
-      },
-    );
+  Future<void> _processMessage(String message) async {
+    final updatedItems = await _geminiService.processMessage(message);
+    setState(() => _urunler = updatedItems);
+    await _storageService.saveItems(updatedItems);
+  }
+
+  Future<void> _deleteSelectedItems() async {
+    final itemsToDelete =
+        _selectedItems.map((index) => _urunler[index].isim).toList();
+    final updatedItems = await _geminiService.deleteItems(itemsToDelete);
+
+    setState(() {
+      _urunler = updatedItems;
+      _selectedItems.clear();
+    });
+
+    await _storageService.saveItems(updatedItems);
   }
 
   PreferredSizeWidget _buildAppBar() {
@@ -159,52 +123,12 @@ class _HomeScreenState extends State<HomeScreen>
     return Scaffold(
       backgroundColor: AppColors.scaffoldBackground,
       appBar: _buildAppBar(),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _speechAvailable
-            ? (_listening ? _stopListening : _startListening)
-            : null,
-        backgroundColor: _listening ? AppColors.darkGrey : AppColors.accent,
-        label: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
-          transitionBuilder: (Widget child, Animation<double> animation) {
-            return FadeTransition(
-              opacity: animation,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0.2, 0.0),
-                  end: Offset.zero,
-                ).animate(animation),
-                child: child,
-              ),
-            );
-          },
-          child: Text(
-            _listening ? 'Dinlemeyi Durdur' : 'Sesli Komut',
-            key: ValueKey<bool>(_listening),
-            style: GoogleFonts.ubuntu(
-              fontWeight: FontWeight.w500,
-              color: AppColors.lightText,
-            ),
-          ),
-        ),
-        icon: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
-          transitionBuilder: (Widget child, Animation<double> animation) {
-            return ScaleTransition(
-              scale: animation,
-              child: FadeTransition(
-                opacity: animation,
-                child: child,
-              ),
-            );
-          },
-          child: Icon(
-            _listening ? Icons.stop_rounded : Icons.mic_rounded,
-            key: ValueKey<bool>(_listening),
-            color: AppColors.lightText,
-          ),
-        ),
-        elevation: 4,
+      floatingActionButton: SpeechFAB(
+        isAvailable: _speechService.isAvailable,
+        isListening: _speechService.isListening,
+        onStart: _startListening,
+        onStop: _stopListening,
+        animation: _animationController,
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       body: Center(
