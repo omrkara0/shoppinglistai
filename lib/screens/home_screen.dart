@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shoppinglistai/constants.dart';
 import 'package:shoppinglistai/models/urun.dart';
+import 'package:shoppinglistai/widgets/custom_app_bar.dart';
+import 'package:shoppinglistai/widgets/empty_state.dart';
+import 'package:shoppinglistai/widgets/no_results.dart';
+import 'package:shoppinglistai/widgets/shopping_list_item.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:google_generative_ai/google_generative_ai.dart';
 
@@ -18,6 +22,7 @@ class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   List<Urun> _urunler = [];
   final Set<int> _selectedItems = {};
+  String _searchQuery = '';
 
   // Speech to text
   final stt.SpeechToText _speech = stt.SpeechToText();
@@ -40,6 +45,11 @@ class _HomeScreenState extends State<HomeScreen>
       })));
 
   late final ChatSession _chatSession;
+
+  List<Urun> get _filteredUrunler => _urunler
+      .where((urun) =>
+          urun.isim.toLowerCase().contains(_searchQuery.toLowerCase()))
+      .toList();
 
   @override
   void initState() {
@@ -134,58 +144,76 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  PreferredSizeWidget _buildAppBar() {
+    return CustomAppBar(
+      itemCount: _urunler.length,
+      selectedItems: _selectedItems,
+      onDeleteSelected: _deleteSelectedItems,
+      onSearch: (value) => setState(() => _searchQuery = value),
+      showSearch: _urunler.isNotEmpty,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        title: Text(
-          "Alışveriş Listesi",
-          style: GoogleFonts.ubuntu(
-            textStyle: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-        ),
-        elevation: 0,
-        actions: [
-          if (_selectedItems.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: IconButton(
-                icon: const Icon(Icons.delete_outline, color: Colors.red),
-                onPressed: _deleteSelectedItems,
-                tooltip: 'Seçili öğeleri sil',
-              ),
-            ),
-        ],
-      ),
+      backgroundColor: AppColors.scaffoldBackground,
+      appBar: _buildAppBar(),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _speechAvailable
             ? (_listening ? _stopListening : _startListening)
             : null,
-        backgroundColor: _listening ? Colors.red : Colors.blue,
-        label: Text(
-          _listening ? 'Dinlemeyi Durdur' : 'Sesli Komut',
-          style: GoogleFonts.ubuntu(fontWeight: FontWeight.w500),
+        backgroundColor: _listening ? AppColors.darkGrey : AppColors.accent,
+        label: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          transitionBuilder: (Widget child, Animation<double> animation) {
+            return FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0.2, 0.0),
+                  end: Offset.zero,
+                ).animate(animation),
+                child: child,
+              ),
+            );
+          },
+          child: Text(
+            _listening ? 'Dinlemeyi Durdur' : 'Sesli Komut',
+            key: ValueKey<bool>(_listening),
+            style: GoogleFonts.ubuntu(
+              fontWeight: FontWeight.w500,
+              color: AppColors.lightText,
+            ),
+          ),
         ),
-        icon: AnimatedIcon(
-          icon: AnimatedIcons.play_pause,
-          progress: _animationController,
+        icon: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          transitionBuilder: (Widget child, Animation<double> animation) {
+            return ScaleTransition(
+              scale: animation,
+              child: FadeTransition(
+                opacity: animation,
+                child: child,
+              ),
+            );
+          },
+          child: Icon(
+            _listening ? Icons.stop_rounded : Icons.mic_rounded,
+            key: ValueKey<bool>(_listening),
+            color: AppColors.lightText,
+          ),
         ),
         elevation: 4,
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       body: Center(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _urunlerListe(),
+              _buildList(),
             ],
           ),
         ),
@@ -193,124 +221,36 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _urunlerListe() {
+  Widget _buildList() {
     if (_urunler.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.shopping_cart_outlined,
-              size: 120,
-              color: Colors.grey[400],
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Alışveriş listeniz boş',
-              style: GoogleFonts.ubuntu(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[600],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Ürün eklemek için mikrofon butonuna tıklayın',
-              style: GoogleFonts.ubuntu(
-                fontSize: 16,
-                color: Colors.grey[600],
-              ),
-            ),
-          ],
-        ),
-      );
+      return const EmptyState();
+    }
+
+    final items = _filteredUrunler;
+    if (items.isEmpty) {
+      return const NoResults();
     }
 
     return Flexible(
       child: ListView.builder(
-        itemCount: _urunler.length,
+        itemCount: items.length,
         physics: const BouncingScrollPhysics(),
         itemBuilder: (context, index) {
-          final Urun urun = _urunler[index];
+          final Urun urun = items[index];
           final bool isSelected = _selectedItems.contains(index);
 
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4.0),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              decoration: BoxDecoration(
-                color: isSelected ? Colors.blue.withOpacity(0.1) : Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withOpacity(0.1),
-                    spreadRadius: 1,
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: ListTile(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                leading: Transform.scale(
-                  scale: 1.2,
-                  child: Checkbox(
-                    value: isSelected,
-                    onChanged: (bool? value) {
-                      setState(() {
-                        if (value == true) {
-                          _selectedItems.add(index);
-                        } else {
-                          _selectedItems.remove(index);
-                        }
-                      });
-                    },
-                    shape: const CircleBorder(),
-                    activeColor: Colors.blue,
-                  ),
-                ),
-                title: Text(
-                  urun.isim,
-                  style: GoogleFonts.ubuntu(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.black87,
-                    decoration: isSelected ? TextDecoration.lineThrough : null,
-                  ),
-                ),
-                trailing: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: RichText(
-                    text: TextSpan(
-                      children: [
-                        TextSpan(
-                          text: "${urun.miktar} ",
-                          style: GoogleFonts.roboto(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue[700],
-                          ),
-                        ),
-                        TextSpan(
-                          text: urun.miktarTuru,
-                          style: GoogleFonts.ubuntu(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.blue[700],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          return ShoppingListItem(
+            urun: urun,
+            isSelected: isSelected,
+            onSelected: (bool? value) {
+              setState(() {
+                if (value == true) {
+                  _selectedItems.add(index);
+                } else {
+                  _selectedItems.remove(index);
+                }
+              });
+            },
           );
         },
       ),
