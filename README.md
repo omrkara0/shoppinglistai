@@ -1,16 +1,34 @@
-# shoppinglistai
 
-A new Flutter project.
+![Logo](https://dev-to-uploads.s3.amazonaws.com/uploads/articles/th5xamgrr6se0x5ro4g6.png)
 
-## Getting Started
+    
+# AI Destekli Alışveriş Listesi
 
-This project is a starting point for a Flutter application.
+Kolayca sesiniz ile ürün ekleyin , silin ve düzenleyin.
 
-A few resources to get you started if this is your first Flutter project:
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## Özellikler
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- Speech to Text
+- Lokal Database
+- Gemini AI
+
+
+  
+## Kullanılan Teknolojiler
+
+**İstemci:** Flutter
+
+
+
+  
+## Ekran Görüntüleri
+
+![Uygulama Ekran Görüntüsü](https://via.placeholder.com/468x300?text=App+Screenshot+Here)
+
+  
+## Destek
+
+buymeacoffee.com/omrkara0
+
+  
